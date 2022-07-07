@@ -4,49 +4,45 @@ class UrlsController < ApplicationController
   def index
     # recent 10 short urls
     @url = Url.new
-    @urls = [
-      Url.new(short_url: 'ABCDE', original_url: 'http://google.com', created_at: Time.now),
-      Url.new(short_url: 'ABCDG', original_url: 'http://facebook.com', created_at: Time.now),
-      Url.new(short_url: 'ABCDF', original_url: 'http://yahoo.com', created_at: Time.now)
-    ]
+    @urls = Url.includes(:clicks).order(created_at: :desc).limit(10)
   end
 
   def create
-    raise 'add some code'
+    # binding.pry
+    Url.create!(url_params)
     # create a new URL record
   end
 
   def show
-    @url = Url.new(short_url: 'ABCDE', original_url: 'http://google.com', created_at: Time.now)
+    return render plain: '404' unless @url = Url.find_by(short_url: params[:url])
     # implement queries
-    @daily_clicks = [
-      ['1', 13],
-      ['2', 2],
-      ['3', 1],
-      ['4', 7],
-      ['5', 20],
-      ['6', 18],
-      ['7', 10],
-      ['8', 20],
-      ['9', 15],
-      ['10', 5]
-    ]
-    @browsers_clicks = [
-      ['IE', 13],
-      ['Firefox', 22],
-      ['Chrome', 17],
-      ['Safari', 7]
-    ]
-    @platform_clicks = [
-      ['Windows', 13],
-      ['macOS', 22],
-      ['Ubuntu', 17],
-      ['Other', 7]
-    ]
+    daily_click_hash = {}
+    @daily_clicks = @url.clicks.current_month.group_by{|a| a.created_at.strftime("%d")}.map {|k, v| daily_click_hash[k] = v.count}
+    @daily_clicks = daily_click_hash.to_a.sort
+    @browsers_clicks = @url.clicks.pluck_tally(:browser)
+    @platform_clicks = @url.clicks.pluck_tally(:platform)
   end
 
   def visit
-    # params[:short_url]
-    render plain: 'redirecting to url...'
+    # redirect to the original URL
+    @url = Url.find_by(short_url: params[:short_url])
+    # binding.pry
+    if @url.present?
+      @url.update_clicks
+      @url.clicks.create(browser: browser.name, platform: browser.platform.name)
+      render plain: @url.original_url
+    else
+      render plain: '404'
+    end
+  end
+
+  def last_10_urls
+    @urls = Url.includes(:clicks).order(created_at: :desc).limit(10)
+    render json: @urls
+  end
+
+  private
+  def url_params
+    params.require(:url).permit(:original_url)
   end
 end
